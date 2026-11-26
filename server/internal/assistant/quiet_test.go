@@ -48,9 +48,9 @@ func newQuietServiceTimed(t testing.TB, st Store, times superviseTimings) (*Serv
 	// then are the timings above put back.
 	t.Cleanup(func() { waitAnsweredCardHooks(t, s) })
 	t.Cleanup(s.stopQuietTimers)
-	f.inbox = newFakeInbox()
 	superviseTimed(t, s, times)
 	f.mu.Lock()
+	f.inbox = newFakeInbox() // under the hub's lock: the service's first publish may already be reading its hello
 	f.hello.Assistant.MachineID = "server"
 	f.known["conv1"] = true
 	f.mu.Unlock()

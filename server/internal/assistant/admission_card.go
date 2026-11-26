@@ -190,12 +190,16 @@ func (v admissionLines) group(name string) (cap, launchers, pool admissionSide) 
 	if !ok {
 		return none, none, none
 	}
-	members := make([]string, 0, len(g.Launchers))
+	// A launcher is matched by its exact name (launcherGroup), so two lists are told apart as written, quoted, while
+	// the card writes each name on one line.
+	members, written := make([]string, 0, len(g.Launchers)), make([]string, 0, len(g.Launchers))
 	for _, launcher := range g.Launchers {
 		members = append(members, oneLine(launcher))
+		written = append(written, strconv.Quote(strings.TrimSpace(launcher)))
 	}
 	cap = admissionOwn(strconv.Itoa(g.Cap))
 	launchers = admissionOwn(strings.Join(members, ", "))
+	launchers.exact = strings.Join(written, ", ")
 	pool = none
 	if g.QuotaPool != nil {
 		pool = admissionOwn(i18n.T(v.lang, "assistant-settings_tool.admission_pool",

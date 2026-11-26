@@ -123,6 +123,8 @@
   "admission_default": "{value} (default)",
   "admission_general": "{value} (the line for every computer)",
   "admission_hub": "{value} (the hub computer’s line)",
+  "admission_direction_general": "{value} (the cap for every direction)",
+  "admission_exact": "{value} ({exact})",
   "admission_own_none": "no line of its own",
   "admission_gate": "The gate",
   "admission_load": "Load per core, every computer",

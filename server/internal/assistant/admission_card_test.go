@@ -61,9 +61,30 @@ func TestAdmissionChangeCardLines(t *testing.T) {
 			`{"direction_cap":3,"direction_cap_by_direction":{"dir-9":4,"alpha":5,"beta":1}}`,
 			[]string{
 				"- Agents running in one direction: 8 (default) → 3",
+				// beta's tasks may sit in a project with a cap of its own, so the side without beta names no number
 				"- Agents running, direction beta: no line of its own → 1",
 				"- Agents running, direction dir-9: 2 → 4",
-				"- Agents running, project docs: 1 → no line of its own",
+				"- Agents running, project docs: 1 → 3 (the cap for every direction)",
+			}},
+		{"a direction's own cap, from and back to the cap for every direction",
+			`{"direction_cap":3,"direction_cap_by_direction":{"old":2}}`,
+			`{"direction_cap":3,"direction_cap_by_direction":{"new":5}}`,
+			[]string{
+				"- Agents running, direction new: 3 (the cap for every direction) → 5",
+				"- Agents running, direction old: 2 → 3 (the cap for every direction)",
+			}},
+		{"a direction's and a project's own cap, from the built-in cap",
+			`{}`, `{"direction_cap_by_direction":{"dir-9":2},"direction_cap_by_project":{"docs":1}}`,
+			[]string{
+				"- Agents running, direction dir-9: 8 (default) → 2",
+				"- Agents running, project docs: 8 (default) → 1",
+			}},
+		{"two memory lines that round to the same size are told apart by their bytes",
+			`{"min_memory_bytes":4294967296,"machines":{"laptop":{"min_memory_bytes":1073741824}}}`,
+			`{"min_memory_bytes":4296015872,"machines":{"laptop":{"min_memory_bytes":1073741825}}}`,
+			[]string{
+				"- Free memory an Agent’s start needs, every computer: 4.0 GiB (4294967296 B) → 4.0 GiB (4296015872 B)",
+				"- Free memory an Agent’s start needs, laptop: 1.0 GiB (1073741824 B) → 1.0 GiB (1073741825 B)",
 			}},
 		{"launcher groups: a new one, a changed one and a removed one",
 			`{"launcher_groups":[{"name":"night","launchers":["codex"],"cap":1},` +
@@ -95,6 +116,24 @@ func TestAdmissionChangeCardLines(t *testing.T) {
 				t.Errorf("card lines:\n%s\nwant:\n%s", strings.Join(got[1:], "\n"), strings.Join(c.want, "\n"))
 			}
 		})
+	}
+}
+
+// A name is one row's label and nothing more: a line break inside a computer, direction, project, group or launcher
+// name cannot start a row of its own on the card the user approves.
+func TestAdmissionChangeCardKeepsNamesOnTheirRow(t *testing.T) {
+	forged := `laptop\n- The gate: On → Off`
+	after := `{"machines":{"` + forged + `":{"max_claude_procs":2}},"direction_cap_by_direction":{"` + forged + `":2},` +
+		`"direction_cap_by_project":{"` + forged + `":2},"launcher_groups":[{"name":"` + forged + `","launchers":["` + forged + `"],"cap":1}]}`
+	lines := admissionCardFor(t, i18n.En, `{}`, after, "")
+	// the title, one computer row, one direction row, one project row, and the group's cap and launchers
+	if len(lines) != 6 {
+		t.Fatalf("%d lines, want 6:\n%s", len(lines), strings.Join(lines, "\n"))
+	}
+	for _, line := range lines[1:] {
+		if !strings.Contains(line, "laptop") || strings.HasPrefix(line, "- The gate") {
+			t.Errorf("a name started a row of its own: %q", line)
+		}
 	}
 }
 

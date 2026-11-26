@@ -123,6 +123,8 @@
   "admission_default": "{value}（既定）",
   "admission_general": "{value}（すべてのコンピューターのライン）",
   "admission_hub": "{value}（ハブのコンピューターのライン）",
+  "admission_direction_general": "{value}（すべての方向の上限）",
+  "admission_exact": "{value}（{exact}）",
   "admission_own_none": "個別のラインなし",
   "admission_gate": "ゲート",
   "admission_load": "コアあたりの負荷の上限、すべてのコンピューター",

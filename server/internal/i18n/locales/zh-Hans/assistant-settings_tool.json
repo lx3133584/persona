@@ -123,6 +123,8 @@
   "admission_default": "{value}（默认）",
   "admission_general": "{value}（跟所有电脑的闸线）",
   "admission_hub": "{value}（跟 hub 所在电脑的闸线）",
+  "admission_direction_general": "{value}（跟所有方向的上限）",
+  "admission_exact": "{value}（{exact}）",
   "admission_own_none": "没有单独的闸线",
   "admission_gate": "准入闸",
   "admission_load": "每核负载上限，所有电脑",

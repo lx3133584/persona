@@ -23,6 +23,14 @@ func newQuietService(t testing.TB) (*Service, *fakeHub) {
 // newQuietServiceOn is newQuietService with st as its database (nil: none).
 func newQuietServiceOn(t testing.TB, st Store) (*Service, *fakeHub) {
 	t.Helper()
+	return newQuietServiceTimed(t, st, shortSuperviseTimings)
+}
+
+// newQuietServiceTimed is newQuietServiceOn with times as the supervision timings. A database that already holds
+// pending signals has the fixture's own steps set the digest timer, so a test that wants other timings on such a
+// Service gives them here: written after the fixture returns, they race with that timer's read (#16344).
+func newQuietServiceTimed(t testing.TB, st Store, times superviseTimings) (*Service, *fakeHub) {
+	t.Helper()
 	if quietNoticeDelay != 30*time.Millisecond {
 		old := quietNoticeDelay
 		quietNoticeDelay = 30 * time.Millisecond
@@ -36,7 +44,7 @@ func newQuietServiceOn(t testing.TB, st Store) (*Service, *fakeHub) {
 	s, f := newTaskServiceOn(t, st)
 	t.Cleanup(s.stopQuietTimers)
 	f.inbox = newFakeInbox()
-	shortSupervise(t, s)
+	superviseTimed(t, s, times)
 	f.mu.Lock()
 	f.hello.Assistant.MachineID = "server"
 	f.known["conv1"] = true

@@ -55,9 +55,7 @@ func TestScheduledTodoPriorConversationsRemainExcluded(t *testing.T) {
 	}
 	cur, _ := s.todoNow(todo.ID)
 	// The database holds the first manager's pending signal: the second one's timings are set before its timer is.
-	restarted := shortSuperviseTimings
-	restarted.gather = time.Hour
-	s, f = newQuietServiceTimed(t, store, restarted)
+	s, f = newQuietServiceTimed(t, store, heldSuperviseTimings())
 	putTodo(s, cur)
 	f.answerNode(DeviceSessionItems, func(string, json.RawMessage) (any, error) {
 		return map[string]any{"items": []proto.Item{{Kind: proto.KindText, Role: "assistant", Text: "A different patrol summary, still no batch"}}}, nil
@@ -222,8 +220,7 @@ func TestScheduledTodoDelayedHistoryReplayPreservesNewerAssessment(t *testing.T)
 			}
 			if strings.HasSuffix(mode, "restart") {
 				cur, _ := s.todoNow(todo.ID)
-				s, _ = newQuietServiceOn(t, store)
-				s.superviseTimes.gather = time.Hour
+				s, _ = newQuietServiceTimed(t, store, heldSuperviseTimings())
 				s.todoAskAfter = time.Nanosecond
 				putTodo(s, cur)
 			}

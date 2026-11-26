@@ -33,8 +33,8 @@ func heldSuperviseTimings() superviseTimings {
 	return times
 }
 
-// superviseTimed is shortSupervise with times as s's timings. It is called before anything of s can set a digest
-// timer: the timer reads the timings with no lock of their own.
+// superviseTimed is shortSupervise with times as s's timings. Call it before anything of s can set a digest timer:
+// the timer reads the timings with no lock of their own.
 func superviseTimed(t testing.TB, s *Service, times superviseTimings) {
 	t.Helper()
 	s.superviseTimes = times

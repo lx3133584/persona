@@ -43,12 +43,13 @@ func newQuietServiceTimed(t testing.TB, st Store, times superviseTimings) (*Serv
 		t.Cleanup(func() { agentReachAttempts, agentReachBackoff, agentReachMax = reachA, reachB, reachM })
 	}
 	s, f := newTaskServiceOn(t, st)
+	// Cleanups run last registered first: the digest and notice timers below are stopped and drained, then the
+	// answered cards' hooks still running are waited for (they read the reach timings, tasks_follow.go), and only
+	// then are the timings above put back.
+	t.Cleanup(func() { waitAnsweredCardHooks(t, s) })
 	t.Cleanup(s.stopQuietTimers)
 	f.inbox = newFakeInbox()
 	superviseTimed(t, s, times)
-	// Registered last, so it runs first: an answered card's hook still running reads the reach timings above, and
-	// may ask for a notice or a digest, before those are stopped and the timings put back.
-	t.Cleanup(s.fleet.resolvedRuns.Wait)
 	f.mu.Lock()
 	f.hello.Assistant.MachineID = "server"
 	f.known["conv1"] = true
@@ -58,15 +59,34 @@ func newQuietServiceTimed(t testing.TB, st Store, times superviseTimings) (*Serv
 	return s, f
 }
 
+// waitAnsweredCardHooks waits for the answered cards' hooks still running on s (interactionResolvedSoon). One that
+// never ends fails the test by name rather than holding its cleanup until the package's timeout.
+func waitAnsweredCardHooks(t testing.TB, s *Service) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		s.fleet.resolvedRuns.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Errorf("an answered card's hook was still running 10 seconds after the test ended")
+	}
+}
+
 // The fixture puts the package's reach timings back when its test ends. An answered card's hook (InteractionResolved)
 // runs on its own goroutine and reads them (taskNeedsRecheck), so the fixture waits for it first (#16344).
 func TestQuietFixtureWaitsForAnsweredCardHook(t *testing.T) {
-	entered, release := make(chan struct{}), make(chan struct{})
+	entered, release := make(chan struct{}, 1), make(chan struct{})
 	var ended atomic.Bool
 	t.Run("fixture", func(t *testing.T) {
-		s, _, _ := newSupervisedService(t)
+		s, _ := newQuietService(t)
 		s.ixResolved = func(InteractionResolved) {
-			close(entered)
+			select {
+			case entered <- struct{}{}:
+			default:
+			}
 			<-release
 			ended.Store(true)
 		}
@@ -75,7 +95,12 @@ func TestQuietFixtureWaitsForAnsweredCardHook(t *testing.T) {
 		if err := s.resolve(ix.ID, proto.Resolution{Answers: map[string]string{ix.Questions[0].Question: "Allow read-only"}}); err != nil {
 			t.Fatal(err)
 		}
-		<-entered
+		select {
+		case <-entered:
+		case <-time.After(5 * time.Second):
+			close(release)
+			t.Fatal("ending the card did not run its hook")
+		}
 		time.AfterFunc(50*time.Millisecond, func() { close(release) })
 	})
 	if !ended.Load() {

@@ -2467,6 +2467,39 @@ test('cwd-only legacy worktree duplicates prefer the main project; explicit sele
   assert.ok(fake.workspaces.has(legacy.id), 'the legacy record remains readable and untouched')
 })
 
+test('a cwd-only start that finds its existing worktree workspace does not need the project list', async (t) => {
+  const f = projectFixture(t)
+  const tree = join(f.dir, 'legacy')
+  f.git(f.repo, 'worktree', 'add', '-b', 'legacy', tree)
+  const legacy = workspaceDescriptor({ workspaceDirectory: tree, projectRootPath: tree, projectId: 'prj_legacy', projectDisplayName: 'legacy', name: 'legacy', workspaceKind: 'worktree',
+    project: { projectKey: 'prj_legacy', projectName: 'legacy', workspaceName: 'legacy',
+      checkout: { cwd: tree, isGit: true, currentBranch: 'legacy', worktreeRoot: tree, mainRepoRoot: f.repo, isPaseoOwnedWorktree: false } } })
+  const { fake, node } = await setup(t, { workspaces: [legacy] })
+  await until('the legacy workspace', () => node.last('runtime.workspaces'))
+  fake.handlers['project.list.request'] = () => ({ payload: { error: 'project list is down' } })
+  await call(node, 'session.start', { cwd: tree, launcher: 'my-codex' })
+  assert.equal(fake.requestsOf('agent.create.request').at(-1)?.workspaceId, legacy.id, 'reuses the existing worktree workspace')
+})
+
+test('a cwd-only start falls back to an existing workspace when project roots are ambiguous', async (t) => {
+  const f = projectFixture(t)
+  const tree = join(f.dir, 'legacy')
+  f.git(f.repo, 'worktree', 'add', '-b', 'legacy', tree)
+  const subdir = join(tree, 'sub')
+  mkdirSync(subdir)
+  const legacy = workspaceDescriptor({ workspaceDirectory: tree, projectRootPath: tree, projectId: 'prj_legacy', projectDisplayName: 'legacy', name: 'legacy', workspaceKind: 'worktree',
+    project: { projectKey: 'prj_legacy', projectName: 'legacy', workspaceName: 'legacy',
+      checkout: { cwd: tree, isGit: true, currentBranch: 'legacy', worktreeRoot: tree, mainRepoRoot: f.repo, isPaseoOwnedWorktree: false } } })
+  const existing = agentSnapshot({ provider: 'my-codex', cwd: subdir, workspaceId: legacy.id, status: 'idle' })
+  const base = Object.values(agents()).map((agent) => ({ agent, project: PROJECT }))
+  const { fake, node } = await setup(t, { workspaces: [legacy], agents: [...base, { agent: existing, project: legacy.project }] })
+  await until('the legacy workspace', () => node.last('runtime.workspaces'))
+  fake.handlers['project.list.request'] = () => ({ payload: { projects: [f.project('prj_tree', tree), f.project('prj_subdir', subdir)] } })
+  await call(node, 'session.start', { cwd: subdir, launcher: 'my-codex' })
+  assert.equal(fake.requestsOf('agent.create.request').at(-1)?.workspaceId, legacy.id, 'reuses the existing workspace despite ambiguous roots')
+  assert.equal(fake.requestsOf('workspace.create.request').length, 0, 'no replacement workspace is created')
+})
+
 test('path-only worktrees and direct Agent starts reuse the unique physical project, including a non-git directory', async (t) => {
   const f = projectFixture(t)
   const { fake, node } = await setup(t)
@@ -2500,6 +2533,19 @@ test('projects at different non-main roots remain ambiguous and create nothing',
 
   await assert.rejects(makeTree(node, subdir), (e) => e.code === 'project_ambiguous')
   await assert.rejects(call(node, 'session.start', { cwd: subdir, launcher: 'my-codex' }), (e) => e.code === 'project_ambiguous')
+  assert.equal(fake.requestsOf('workspace.create.request').length, 0)
+  assert.equal(fake.requestsOf('agent.create.request').length, 0)
+})
+
+test('a distinct project at a selected main-checkout subdirectory stays ambiguous', async (t) => {
+  const f = projectFixture(t)
+  const subdir = join(f.repo, 'sub')
+  mkdirSync(subdir)
+  const { fake, node } = await setup(t)
+  fake.handlers['project.list.request'] = () => ({ payload: { projects: [f.project('prj_main', f.repo), f.project('prj_subdir', subdir)] } })
+
+  await assert.rejects(call(node, 'session.start', { cwd: subdir, launcher: 'my-codex' }), (e) => e.code === 'project_ambiguous')
+  await assert.rejects(makeTree(node, subdir), (e) => e.code === 'project_ambiguous')
   assert.equal(fake.requestsOf('workspace.create.request').length, 0)
   assert.equal(fake.requestsOf('agent.create.request').length, 0)
 })

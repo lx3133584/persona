@@ -232,13 +232,15 @@ refresh replaces it, including removals. There is no new setting or model depend
     re-resolving its folder. With a directory alone, the bridge reads the active projects and compares physical paths for the
     directory, Git checkout and main checkout. A main-checkout project wins over legacy projects rooted at the linked worktree
     or its subdirectories. Duplicate active records at the selected physical root use the lowest project ID, independent of
-    registry order; matches at different non-main roots still stop creation as `project_ambiguous`. Names and remote URLs are
-    never used to merge independent clones. A failed or malformed project list stops creation. Only a successful list with no
-    match allows Paseo to allocate a project.
+    registry order; matches at different non-main roots are `project_ambiguous` for new creation. Names and remote URLs are
+    never used to merge independent clones. A failed or malformed project list stops new creation. Only a successful list with no
+    match allows Paseo to allocate a project. Project discovery is best effort only for an implicit start that already has a
+    worktree workspace: on failure or ambiguity it falls back to the original owner-less workspace lookup, and rethrows the
+    original error only when that lookup finds nothing.
     A direct Agent start that needs a new workspace uses the same resolver: since `agent.create.request` has no project ID, the bridge
     creates a directory workspace with that ID first, then starts the Agent in it. An exact directory workspace already owned by
-    the selected project is reused; an implicit start never chooses a legacy workspace owned by another project. This stays inside
-    the existing pending-start flow; retries reuse its creation key. If the Agent fails later, the directory workspace remains
+    the selected project is reused; with a resolved project, an implicit start never chooses a legacy workspace owned by another
+    project. This stays inside the existing pending-start flow; retries reuse its creation key. If the Agent fails later, the directory workspace remains
     available for retry.
     Existing groups and sessions are preserved: Paseo 0.16's public workspace commands/protocol have no move or reparent operation.
     The resolver repairs subsequent implicit selection; it does not migrate previously duplicated project groups or workspaces.

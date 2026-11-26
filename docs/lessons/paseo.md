@@ -131,9 +131,10 @@ Git resolves a symlink spelling to its physical checkout. Paseo 0.16's project r
 so handing it only that checkout can allocate a second project. An explicit workspace supplies the project without folder
 resolution; folder-only creation requires a fresh project list. A main-checkout project takes priority over legacy records
 rooted at a linked worktree or its subdirectories. At the selected physical root, duplicate records use the lowest project
-ID rather than registry order. Different matching non-main roots remain ambiguous. An unavailable list is not an empty list.
-Use checkout roots rather than remotes so independent clones remain independent. Read symlinks afresh for writes, outside
-the display cache.
+ID rather than registry order. Different matching non-main roots remain ambiguous for new creation. An unavailable list is not
+an empty list. Use checkout roots rather than remotes so independent clones remain independent. Read symlinks afresh for writes,
+outside the display cache. Main-project preference must not make an existing worktree workspace depend on that fresh read: on
+failure or ambiguity, an implicit start falls back to the old owner-less lookup and rethrows only when no workspace matches.
 
 The direct Agent route reaches `findOrCreateProjectForDirectory` too. Its request has no project ID field: resolve ownership
 before choosing an implicit worktree workspace, reuse an exact directory workspace owned by that project, or create a keyed

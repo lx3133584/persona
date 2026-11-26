@@ -2088,6 +2088,7 @@ export function createPaseoBridge(deps = {}, options = {}) {
       try { return realpathSync(path) } catch { return resolve(path) }
     }
     const roots = new Set([physical(dir)])
+    let checkoutRoot
     let mainRoot
     try {
       // Older Git versions do not support --path-format. The common directory is relative to this command's cwd.
@@ -2095,7 +2096,8 @@ export function createPaseoBridge(deps = {}, options = {}) {
         { encoding: 'utf8', timeout: 5000, maxBuffer: 64 * 1024, env: { ...process.env, LC_ALL: 'C' } })
       const [top, common] = stdout.trim().split('\n')
       if (!top || !common) throw new Error('Git returned no checkout identity')
-      roots.add(physical(top))
+      checkoutRoot = physical(top)
+      roots.add(checkoutRoot)
       const gitDir = physical(resolve(dir, common))
       mainRoot = basename(gitDir) === '.git' ? dirname(gitDir) : gitDir
       roots.add(mainRoot)
@@ -2112,9 +2114,9 @@ export function createPaseoBridge(deps = {}, options = {}) {
       if (!matches.has(root)) matches.set(root, [])
       matches.get(root).push(p.projectId)
     }
-    // A linked worktree's legacy project must not outrank its main checkout's. Duplicate records at the selected
-    // physical root use their lowest ID, making the result independent of registry order without merging anything.
-    const preferred = mainRoot && matches.get(mainRoot)
+    // Only a linked worktree's legacy project yields to its main checkout's. A distinct project explicitly registered
+    // at a selected subdirectory of the main checkout stays ambiguous. Duplicates at one root use their lowest ID.
+    const preferred = mainRoot && checkoutRoot !== mainRoot && matches.get(mainRoot)
     if (preferred?.length) return preferred.sort()[0]
     if (matches.size > 1) {
       throw new RpcError('More than one Paseo project matches this folder. Choose a workspace in the intended project.', 'project_ambiguous')
@@ -2306,8 +2308,19 @@ export function createPaseoBridge(deps = {}, options = {}) {
     }
     const prompt = typeof params.prompt === 'string' ? params.prompt : ''
     const implicitWorkspace = !(typeof params.workspace_id === 'string' && params.workspace_id)
-    let projectId = implicitWorkspace ? await projectAt(cwd) : undefined
+    let projectId
+    let projectError
+    if (implicitWorkspace) {
+      try {
+        projectId = await projectAt(cwd)
+      } catch (err) {
+        projectError = err
+      }
+    }
+    // Main-project preference is best effort for an implicit start: an existing worktree workspace remains usable when
+    // project discovery fails. With no such fallback, keep the original creation error instead of allocating blindly.
     let workspaceId = workspaceFor(params.workspace_id, cwd, { strict: true, projectId })
+    if (!workspaceId && projectError) throw projectError
     // The Persona session is fixed for this start: the id the hub named for it (session_id: the manager names the
     // sessions it starts, to find one whose answer it lost), else paseo-<the first Paseo agent id>. The row handed to
     // the node while Paseo is still creating, the label, the tools' PERSONA_SESSION_ID and the listed session are all

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -45,6 +46,9 @@ func newQuietServiceTimed(t testing.TB, st Store, times superviseTimings) (*Serv
 	t.Cleanup(s.stopQuietTimers)
 	f.inbox = newFakeInbox()
 	superviseTimed(t, s, times)
+	// Registered last, so it runs first: an answered card's hook still running reads the reach timings above, and
+	// may ask for a notice or a digest, before those are stopped and the timings put back.
+	t.Cleanup(s.fleet.resolvedRuns.Wait)
 	f.mu.Lock()
 	f.hello.Assistant.MachineID = "server"
 	f.known["conv1"] = true
@@ -52,6 +56,31 @@ func newQuietServiceTimed(t testing.TB, st Store, times superviseTimings) (*Serv
 	setSettings(t, s, func(v *Settings) { v.Main = "conv1" })
 	f.setSessions("server", proto.Session{SessionID: "conv1", MachineID: "server", Assistant: true, Status: proto.StatusIdle})
 	return s, f
+}
+
+// The fixture puts the package's reach timings back when its test ends. An answered card's hook (InteractionResolved)
+// runs on its own goroutine and reads them (taskNeedsRecheck), so the fixture waits for it first (#16344).
+func TestQuietFixtureWaitsForAnsweredCardHook(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	var ended atomic.Bool
+	t.Run("fixture", func(t *testing.T) {
+		s, _, _ := newSupervisedService(t)
+		s.ixResolved = func(InteractionResolved) {
+			close(entered)
+			<-release
+			ended.Store(true)
+		}
+		ix := parkOwnerPrompt()
+		putPending(s, &pending{ix: ix, done: make(chan proto.Resolution, 1), told: true})
+		if err := s.resolve(ix.ID, proto.Resolution{Answers: map[string]string{ix.Questions[0].Question: "Allow read-only"}}); err != nil {
+			t.Fatal(err)
+		}
+		<-entered
+		time.AfterFunc(50*time.Millisecond, func() { close(release) })
+	})
+	if !ended.Load() {
+		t.Fatal("the fixture's cleanup returned while an answered card's hook was still running")
+	}
 }
 
 // sessionsListCalls counts the sessions.list calls one machine got.
